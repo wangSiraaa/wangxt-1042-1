@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>街道应急物资仓位管理系统</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="header-left">
+                <h1 class="app-title">🚨 街道应急物资仓位管理系统</h1>
+                <span class="app-subtitle">应急物资全流程调拨 · 仓管 / 指挥员 / 志愿者 / 社区接收人</span>
+            </div>
+            <div class="header-right">
+                <div class="role-switcher">
+                    <label>当前角色：</label>
+                    <select id="roleSelector" class="role-select">
+                        <option value="warehouse">📦 仓管</option>
+                        <option value="commander">🎖️ 指挥员</option>
+                        <option value="volunteer">🙋 志愿者</option>
+                        <option value="receiver">🏘️ 社区接收人</option>
+                    </select>
+                </div>
+                <div class="user-info">
+                    <span class="user-name" id="currentUserName">仓管-张伟</span>
+                    <span class="status-dot online"></span>
+                </div>
+            </div>
+        </header>
+
+        <nav class="app-nav">
+            <ul class="nav-tabs">
+                <li class="nav-item active" data-page="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">库存看板</span>
+                </li>
+                <li class="nav-item" data-page="warehouse">
+                    <span class="nav-icon">🏭</span>
+                    <span class="nav-text">仓位图</span>
+                </li>
+                <li class="nav-item" data-page="allocation">
+                    <span class="nav-icon">📋</span>
+                    <span class="nav-text">调拨单</span>
+                    <span class="nav-badge" id="allocationBadge">0</span>
+                </li>
+                <li class="nav-item" data-page="transport">
+                    <span class="nav-icon">🚚</span>
+                    <span class="nav-text">转运轨迹</span>
+                </li>
+                <li class="nav-item" data-page="return">
+                    <span class="nav-icon">↩️</span>
+                    <span class="nav-text">归还记录</span>
+                    <span class="nav-badge warning" id="overdueBadge">0</span>
+                </li>
+            </ul>
+        </nav>
+
+        <main class="app-main">
+            <!-- 库存看板 -->
+            <section class="page-content active" id="page-dashboard">
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">📦</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="totalMaterials">0</div>
+                            <div class="stat-label">物资种类</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon green">✅</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="availableCount">0</div>
+                            <div class="stat-label">可调拨批次</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">⚠️</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="warningCount">0</div>
+                            <div class="stat-label">库存预警</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red">❗</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="expiringCount">0</div>
+                            <div class="stat-label">临期/过期</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon purple">📋</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="allocatedCount">0</div>
+                            <div class="stat-label">进行中调拨</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon cyan">🔒</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="lockedCount">0</div>
+                            <div class="stat-label">已锁定库存</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="panel panel-large">
+                        <div class="panel-header">
+                            <h3>📋 物资库存列表</h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-sm btn-primary" id="addMaterialBtn" style="display:none;">+ 录入物资</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="filter-bar">
+                                <input type="text" class="search-input" placeholder="搜索物资名称..." id="materialSearch">
+                                <select class="filter-select" id="categoryFilter">
+                                    <option value="">全部类别</option>
+                                    <option value="医疗急救">医疗急救</option>
+                                    <option value="防汛物资">防汛物资</option>
+                                    <option value="消防器材">消防器材</option>
+                                    <option value="生活物资">生活物资</option>
+                                    <option value="通讯设备">通讯设备</option>
+                                </select>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>物资名称</th>
+                                            <th>类别</th>
+                                            <th>规格</th>
+                                            <th>批次号</th>
+                                            <th>效期</th>
+                                            <th>仓位</th>
+                                            <th>总数量</th>
+                                            <th>可调拨</th>
+                                            <th>已锁定</th>
+                                            <th>保养状态</th>
+                                            <th>状态</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="materialTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3>🔔 预警提醒</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="warning-list" id="warningList">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3>📌 近期调拨</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="recent-list" id="recentAllocationList">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 仓位图 -->
+            <section class="page-content" id="page-warehouse">
+                <div class="warehouse-layout">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3>🏭 仓库仓位布局图</h3>
+                            <div class="panel-actions">
+                                <span class="legend-item"><span class="legend-color status-normal"></span>正常</span>
+                                <span class="legend-item"><span class="legend-color status-warning"></span>预警</span>
+                                <span class="legend-item"><span class="legend-color status-danger"></span>不足/过期</span>
+                                <span class="legend-item"><span class="legend-color status-locked"></span>已锁定</span>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="warehouse-map" id="warehouseMap">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <div class="panel-header">
+                            <h3>📦 仓位详情</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="position-detail" id="positionDetail">
+                                <div class="empty-tip">请点击左侧仓位查看详情</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 调拨单 -->
+            <section class="page-content" id="page-allocation">
+                <div class="allocation-container">
+                    <div class="panel panel-large">
+                        <div class="panel-header">
+                            <h3>📋 调拨单管理</h3>
+                            <div class="panel-actions">
+                                <button class="btn btn-primary" id="newAllocationBtn" style="display:none;">+ 发起调拨</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="filter-bar">
+                                <select class="filter-select" id="allocationStatusFilter">
+                                    <option value="">全部状态</option>
+                                    <option value="pending">待审批</option>
+                                    <option value="approved">待领用</option>
+                                    <option value="picking">出库中</option>
+                                    <option value="transporting">转运中</option>
+                                    <option value="received">已签收</option>
+                                    <option value="returning">归还中</option>
+                                    <option value="completed">已完成</option>
+                                    <option value="rejected">已驳回</option>
+                                </select>
+                                <input type="text" class="search-input" placeholder="搜索调拨单号..." id="allocationSearch">
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>调拨单号</th>
+                                            <th>申请时间</th>
+                                            <th>目标社区</th>
+                                            <th>物资数量</th>
+                                            <th>申请人</th>
+                                            <th>状态</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="allocationTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 转运轨迹 -->
+            <section class="page-content" id="page-transport">
+                <div class="transport-container">
+                    <div class="panel panel-large">
+                        <div class="panel-header">
+                            <h3>🚚 转运轨迹</h3>
+                            <div class="panel-actions">
+                                <span class="status-text">我的任务：<strong id="myTaskCount">0</strong> 个进行中</span>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="transport-timeline" id="transportTimeline">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 归还记录 -->
+            <section class="page-content" id="page-return">
+                <div class="return-container">
+                    <div class="panel panel-large">
+                        <div class="panel-header">
+                            <h3>↩️ 归还记录</h3>
+                            <div class="panel-actions">
+                                <select class="filter-select" id="returnStatusFilter">
+                                    <option value="">全部</option>
+                                    <option value="overdue">已逾期</option>
+                                    <option value="returned">已归还</option>
+                                    <option value="partial">部分归还</option>
+                                </select>
+                                <button class="btn btn-warning" id="urgeReturnBtn" style="display:none;">📢 批量催还</button>
+                            </div>
+                        </div>
+                        <div class="panel-body">
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>调拨单号</th>
+                                            <th>社区</th>
+                                            <th>应还日期</th>
+                                            <th>应还数量</th>
+                                            <th>已还数量</th>
+                                            <th>状态</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="returnTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 模态框容器 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modalContainer">
+        </div>
+    </div>
+
+    <!-- Toast 消息提示 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/data.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/warehouse.js"></script>
+    <script src="js/allocation.js"></script>
+    <script src="js/transport.js"></script>
+    <script src="js/return.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
