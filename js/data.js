@@ -1308,18 +1308,30 @@ class DataManager {
         );
         
         if (unreturned.length > 0) {
-            const unreturnedMaterials = new Set();
+            const unreturnedMap = new Map();
             unreturned.forEach(a => {
                 a.items.forEach(item => {
                     if (item.qty > item.returnedQty) {
-                        unreturnedMaterials.add(item.materialId);
+                        const unreturnedQty = item.qty - item.returnedQty;
+                        if (unreturnedMap.has(item.materialId)) {
+                            unreturnedMap.set(item.materialId, {
+                                name: item.materialName,
+                                qty: unreturnedMap.get(item.materialId).qty + unreturnedQty
+                            });
+                        } else {
+                            unreturnedMap.set(item.materialId, {
+                                name: item.materialName,
+                                qty: unreturnedQty
+                            });
+                        }
                     }
                 });
             });
             
             items.forEach(item => {
-                if (unreturnedMaterials.has(item.materialId)) {
-                    warnings.push(`${community} 有同类物资未归还，请确认是否继续`);
+                const unreturnedInfo = unreturnedMap.get(item.materialId);
+                if (unreturnedInfo) {
+                    errors.push(`${community} 存在未归还的${unreturnedInfo.name}（未归还数量: ${unreturnedInfo.qty}），归还前不能再次调拨`);
                 }
             });
         }
