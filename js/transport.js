@@ -80,6 +80,7 @@ const TransportPage = {
             const steps = this.getStepStatus(a.status);
             const totalQty = a.items.reduce((sum, item) => sum + item.qty, 0);
             const isMine = a.volunteer === dataManager.getCurrentUser();
+            const isInspecting = a.status === 'inspecting';
             
             let actions = '';
             
@@ -95,16 +96,20 @@ const TransportPage = {
                 if (a.status === 'transporting') {
                     actions = `<button class="btn btn-success btn-sm" onclick="AllocationPage.confirmReceive('${a.id}')">确认签收</button>`;
                 }
+            } else if (role === 'warehouse' && isInspecting) {
+                actions = `<button class="btn btn-warning btn-sm" onclick="AllocationPage.viewDetail('${a.id}')">检测处理</button>`;
             }
             
             actions += `<button class="btn btn-sm" onclick="AllocationPage.viewDetail('${a.id}')">查看详情</button>`;
 
             return `
-                <div class="timeline-card">
+                <div class="timeline-card" style="${isInspecting ? 'border-left:4px solid #d48806;' : (a.billType === 'drill' && !a.convertedFromDrill ? 'border-left:4px solid #1890ff;' : '')}">
                     <div class="timeline-header">
-                        <div class="timeline-title">
-                            ${a.billNo}
-                            ${isMine ? '<span class="status-tag info" style="margin-left: 8px;">我的任务</span>' : ''}
+                        <div class="timeline-title" style="display:flex;align-items:center;gap:8px;">
+                            <strong>${a.billNo}</strong>
+                            ${getBillTypeTag(a)}
+                            ${isMine ? '<span class="status-tag info" style="margin-left:0;">我的任务</span>' : ''}
+                            ${isInspecting ? '<span class="status-tag inspecting" style="margin-left:0;">归还检测中</span>' : ''}
                         </div>
                         <div class="timeline-actions">
                             ${actions}
@@ -180,19 +185,23 @@ const TransportPage = {
             { key: 'picking', label: '出库中', icon: '📦' },
             { key: 'transporting', label: '转运中', icon: '🚚' },
             { key: 'received', label: '已签收', icon: '🏠' },
+            { key: 'returning', label: currentStatus === 'inspecting' ? '检测中' : '归还中', icon: currentStatus === 'inspecting' ? '🔧' : '↩️' },
             { key: 'completed', label: '已完成', icon: '🎉' }
         ];
 
-        const statusOrder = ['pending', 'approved', 'picking', 'transporting', 'received', 'returning', 'completed'];
+        const statusOrder = ['pending', 'approved', 'picking', 'transporting', 'received', 'returning', 'inspecting', 'completed'];
         const currentIdx = statusOrder.indexOf(currentStatus);
+        const returningIdx = statusOrder.indexOf('returning');
 
         return allSteps.map((step, idx) => {
             let stepClass = '';
-            const stepOrderIdx = statusOrder.indexOf(step.key);
+            const stepKey = step.key === 'completed' ? 'completed' : step.key;
+            const stepOrderIdx = statusOrder.indexOf(stepKey);
             
-            if (step.key === currentStatus) {
+            if (stepKey === currentStatus || (step.key === 'returning' && currentStatus === 'inspecting')) {
                 stepClass = 'active';
-            } else if (stepOrderIdx < currentIdx || currentStatus === 'completed' || currentStatus === 'returning') {
+            } else if (stepOrderIdx < currentIdx || currentStatus === 'completed' || 
+                       currentStatus === 'returning' || currentStatus === 'inspecting' && stepOrderIdx <= returningIdx) {
                 stepClass = 'done';
             }
             

@@ -44,6 +44,8 @@ const DashboardPage = {
         setValue('expiringCount', stats.expiringCount);
         setValue('allocatedCount', stats.activeAllocations);
         setValue('lockedCount', stats.lockedCount);
+        setValue('drillLockedCount', stats.drillLockedCount || 0);
+        setValue('inspectingCount', stats.inspectingCount || 0);
     },
 
     // 更新物资表格
@@ -59,7 +61,7 @@ const DashboardPage = {
         if (materials.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="12" style="text-align: center; color: #bfbfbf; padding: 40px;">
+                    <td colspan="14" style="text-align: center; color: #bfbfbf; padding: 40px;">
                         暂无物资数据
                     </td>
                 </tr>
@@ -74,13 +76,14 @@ const DashboardPage = {
             const expireDate = new Date(m.expireDate);
             const daysLeft = Math.ceil((expireDate - today) / (1000 * 60 * 60 * 24));
             const expireText = daysLeft <= 0 ? '已过期' : `还剩${daysLeft}天`;
+            const inspectionHint = m.needInspection ? ' <span style="color:#d48806;font-size:11px;" title="该类物资归还后需先检测方可再调拨">🔧需检测</span>' : '';
 
             const role = dataManager.getCurrentRole();
             const showActions = role === 'warehouse';
 
             return `
                 <tr>
-                    <td><strong>${m.name}</strong></td>
+                    <td><strong>${m.name}</strong>${inspectionHint}</td>
                     <td><span class="status-tag info">${m.category}</span></td>
                     <td>${m.spec}</td>
                     <td><code style="font-size: 11px;">${m.batchNo}</code></td>
@@ -91,9 +94,11 @@ const DashboardPage = {
                         </div>
                     </td>
                     <td>${m.positionCode}</td>
-                    <td>${m.totalQty} ${m.unit}</td>
-                    <td><span style="color: #52c41a;">${m.availableQty}</span> ${m.unit}</td>
-                    <td><span style="color: #722ed1;">${m.lockedQty}</span> ${m.unit}</td>
+                    <td>${getQtyWithTooltip(m, 'totalQty')}</td>
+                    <td style="color: #52c41a;">${getQtyWithTooltip(m, 'availableQty')}</td>
+                    <td style="color: #722ed1;">${getQtyWithTooltip(m, 'lockedQty')}</td>
+                    <td style="color: #1890ff;">${getQtyWithTooltip(m, 'drillLockedQty')}</td>
+                    <td style="color: #d48806;">${getQtyWithTooltip(m, 'inspectingQty')}</td>
                     <td>${getStatusTag(m.maintenanceStatus, 'maintenance')}</td>
                     <td>${getStatusTag(m.availableQty > 0 ? statusClass : 'danger')}</td>
                     <td>
@@ -154,8 +159,9 @@ const DashboardPage = {
             const statusInfo = ALLOCATION_STATUS[a.status] || { label: a.status, class: 'info' };
             return `
                 <div class="recent-item" onclick="AllocationPage.viewDetail('${a.id}')">
-                    <div class="recent-title">
+                    <div class="recent-title" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
                         <span>${a.billNo}</span>
+                        ${getBillTypeTag(a)}
                         <span class="status-tag ${statusInfo.class}">${statusInfo.label}</span>
                     </div>
                     <div class="recent-info">
@@ -182,6 +188,20 @@ const DashboardPage = {
         const expireDate = new Date(material.expireDate);
         const daysLeft = Math.ceil((expireDate - today) / (1000 * 60 * 60 * 24));
 
+        const inspectionNote = material.needInspection 
+            ? `<div style="background:#fffbe6;border:1px solid #ffe58f;padding:10px;border-radius:6px;margin-bottom:8px;font-size:12px;color:#d48806;">🔧 该类物资归还后<strong>需先检测</strong>才能再调拨</div>`
+            : `<div style="font-size:12px;color:#8c8c8c;">该类物资归还后可直接入库，无需检测</div>`;
+
+        const pendingList = findPendingInspectionsForMaterial(material.id);
+        const inspectionList = pendingList.length > 0 ? `
+            <div class="detail-row" style="align-items:flex-start;">
+                <span class="label">当前待检测</span>
+                <span class="value" style="font-size:12px;line-height:1.6;">
+                    ${pendingList.map(p => `${p.billNo}：${p.qty}${material.unit}`).join('<br>')}
+                </span>
+            </div>
+        ` : '';
+
         const content = `
             <div class="detail-section">
                 <h4>基本信息</h4>
@@ -197,11 +217,18 @@ const DashboardPage = {
                 <div class="detail-row"><span class="label">存放仓位</span><span class="value">${material.positionCode}</span></div>
             </div>
             <div class="detail-section">
-                <h4>库存情况</h4>
-                <div class="detail-row"><span class="label">总数量</span><span class="value">${material.totalQty} ${material.unit}</span></div>
+                <h4>库存明细</h4>
+                <div class="detail-row"><span class="label">物理总数</span><span class="value"><strong>${material.totalQty}</strong> ${material.unit}</span></div>
                 <div class="detail-row"><span class="label">可调拨数量</span><span class="value" style="color: #52c41a;">${material.availableQty} ${material.unit}</span></div>
-                <div class="detail-row"><span class="label">已锁定数量</span><span class="value" style="color: #722ed1;">${material.lockedQty} ${material.unit}</span></div>
+                <div class="detail-row"><span class="label">真实审批锁定</span><span class="value" style="color: #722ed1;">${material.lockedQty} ${material.unit}</span></div>
+                <div class="detail-row"><span class="label">演练预占（不占真实）</span><span class="value" style="color: #1890ff;">${material.drillLockedQty || 0} ${material.unit}</span></div>
+                <div class="detail-row"><span class="label">归还待检测</span><span class="value" style="color: #d48806;">${material.inspectingQty || 0} ${material.unit}</span></div>
                 <div class="detail-row"><span class="label">预警阈值</span><span class="value">${material.warningThreshold} ${material.unit}</span></div>
+            </div>
+            <div class="detail-section">
+                <h4>归还检测规则</h4>
+                ${inspectionNote}
+                ${inspectionList}
             </div>
             <div class="detail-section">
                 <h4>保养状态</h4>

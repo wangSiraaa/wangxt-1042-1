@@ -24,12 +24,19 @@ const WarehousePage = {
             const detail = dataManager.getPositionDetail(p.code);
             const statusClass = getPositionStatus(detail);
             const isSelected = this.selectedPosition === p.code;
+            const hasLocked = detail && detail.totalLocked > 0;
+            const hasDrill = detail && (detail.totalDrillLocked || 0) > 0;
+            const hasInspecting = detail && (detail.totalInspecting || 0) > 0;
+            const icons = [];
+            if (hasLocked) icons.push('🔒');
+            if (hasDrill) icons.push('🎯');
+            if (hasInspecting) icons.push('🔧');
 
             return `
                 <div class="position-cell status-${statusClass} ${isSelected ? 'selected' : ''}" 
                      onclick="WarehousePage.selectPosition('${p.code}')"
-                     title="${p.name}">
-                    ${detail && detail.totalLocked > 0 ? '<span class="lock-icon">🔒</span>' : ''}
+                     title="${p.name}${hasDrill ? ' · 演练预占' : ''}${hasInspecting ? ' · 检测中' : ''}">
+                    ${icons.length > 0 ? `<span class="lock-icon">${icons.join('')}</span>` : ''}
                     <div class="pos-code">${p.code}</div>
                     <div class="pos-name">${p.name}</div>
                     <div class="pos-capacity">
@@ -61,6 +68,9 @@ const WarehousePage = {
         const usageRate = parseFloat(detail.usageRate);
         const capacityClass = getCapacityClass(usageRate);
         const statusClass = getPositionStatus(detail);
+        const totalDrill = detail.totalDrillLocked || 0;
+        const totalInspecting = detail.totalInspecting || 0;
+        const totalAvailableQty = detail.totalAvailableQty || 0;
 
         const role = dataManager.getCurrentRole();
 
@@ -88,16 +98,24 @@ const WarehousePage = {
                     <span class="value">${detail.capacity} 件</span>
                 </div>
                 <div class="detail-row">
-                    <span class="label">已使用</span>
+                    <span class="label">已使用（物理）</span>
                     <span class="value">${detail.totalUsed} 件</span>
                 </div>
                 <div class="detail-row">
-                    <span class="label">已锁定</span>
+                    <span class="label">真实审批锁定</span>
                     <span class="value" style="color: #722ed1;">${detail.totalLocked} 件</span>
                 </div>
                 <div class="detail-row">
-                    <span class="label">可用容量</span>
-                    <span class="value" style="color: #52c41a;">${detail.available} 件</span>
+                    <span class="label">演练预占（不占真实）</span>
+                    <span class="value" style="color: #1890ff;">${totalDrill} 件</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">归还待检测</span>
+                    <span class="value" style="color: #d48806;">${totalInspecting} 件</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">真实可调拨合计</span>
+                    <span class="value" style="color: #52c41a; font-weight:600;">${totalAvailableQty} 件</span>
                 </div>
                 <div class="capacity-bar">
                     <div class="capacity-fill ${capacityClass}" style="width: ${Math.min(usageRate, 100)}%;"></div>
@@ -116,11 +134,14 @@ const WarehousePage = {
                     const today = new Date();
                     const expireDate = new Date(m.expireDate);
                     const daysLeft = Math.ceil((expireDate - today) / (1000 * 60 * 60 * 24));
+                    const drillHint = (m.drillLockedQty || 0) > 0 ? `<span style="color:#1890ff;">演练预占:${m.drillLockedQty}</span>` : '';
+                    const inspectHint = (m.inspectingQty || 0) > 0 ? `<span style="color:#d48806;">检测中:${m.inspectingQty}</span>` : '';
+                    const inspectionBadge = m.needInspection ? ' <span style="color:#d48806;font-size:11px;" title="该物资需归还检测">🔧</span>' : '';
                     
                     return `
                         <div class="material-batch-item" onclick="DashboardPage.viewMaterial('${m.id}')">
                             <div class="batch-head">
-                                <span class="batch-name">${m.name}</span>
+                                <span class="batch-name">${m.name}${inspectionBadge}</span>
                                 ${getStatusTag(matStatus)}
                             </div>
                             <div class="batch-info">
@@ -132,6 +153,11 @@ const WarehousePage = {
                                     效期: ${m.expireDate}
                                 </span>
                                 ${m.lockedQty > 0 ? `<span style="color: #722ed1;">锁定: ${m.lockedQty}</span>` : ''}
+                                ${drillHint}
+                                ${inspectHint}
+                            </div>
+                            <div class="batch-info">
+                                <span style="color:#52c41a;">可调拨: ${m.availableQty}${m.unit}</span>
                             </div>
                         </div>
                     `;
@@ -139,7 +165,7 @@ const WarehousePage = {
             </div>
 
             ${role === 'warehouse' ? `
-                <div style="margin-top: 16px; display: flex; gap: 8px;">
+                <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
                     <button class="btn btn-primary" onclick="WarehousePage.adjustPosition('${code}')">
                         📦 调整仓位
                     </button>

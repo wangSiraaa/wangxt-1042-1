@@ -167,6 +167,13 @@ function getToday() {
     return new Date().toISOString().split('T')[0];
 }
 
+// 获取相对日期字符串（days=0今天，days=7一周后）
+function getDateStr(days = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+}
+
 // 生成随机ID
 function generateId(prefix = '') {
     return prefix + Date.now() + Math.random().toString(36).substr(2, 9);
@@ -220,8 +227,124 @@ function getStatusTag(status, type = 'allocation') {
         statusInfo = ALLOCATION_STATUS[status] || { label: status, class: 'info' };
     } else if (type === 'maintenance') {
         statusInfo = MAINTENANCE_STATUS[status] || { label: status, class: 'info' };
+    } else if (type === 'inspection') {
+        statusInfo = INSPECTION_STATUS[status] || { label: status, class: 'info' };
     }
     return `<span class="status-tag ${statusInfo.class}">${statusInfo.label}</span>`;
+}
+
+// 获取单据类型标签HTML
+function getBillTypeTag(allocation) {
+    if (!allocation) return '';
+    if (allocation.convertedFromDrill) {
+        return `<span class="bill-tag converted" title="该单据由演练单升级转换">
+            ${BILL_TYPE.real.icon} 已转真实
+        </span>`;
+    }
+    const type = BILL_TYPE[allocation.billType] || BILL_TYPE.real;
+    return `<span class="bill-tag ${allocation.billType || 'real'}" title="${type.desc}">
+        ${type.icon} ${type.label}
+    </span>`;
+}
+
+// 获取检测状态标签HTML
+function getInspectionTag(inspectionStatus) {
+    const info = INSPECTION_STATUS[inspectionStatus] || INSPECTION_STATUS.none;
+    return `<span class="status-tag ${info.class}">${info.label}</span>`;
+}
+
+// 获取带Tooltip的数量显示（说明库存结构，卡在哪个环节）
+function getQtyWithTooltip(material, field = 'availableQty') {
+    if (!material) return '0';
+    const value = material[field] || 0;
+    const unit = material.unit || '';
+    
+    let tooltipTitle = '';
+    let tooltipRows = [];
+    
+    if (field === 'availableQty') {
+        tooltipTitle = `${material.name} · 库存明细`;
+        tooltipRows = [
+            { label: '物理总数：', value: `${material.totalQty}${unit}`, cls: '' },
+            { label: '真实可调拨：', value: `${material.availableQty}${unit}`, cls: '' },
+            { label: '真实锁定：', value: `${material.lockedQty}${unit}`, cls: '' },
+            { label: '演练预占：', value: `${material.drillLockedQty}${unit}`, cls: 'drill' },
+            { label: '归还待检测：', value: `${material.inspectingQty}${unit}`, cls: 'inspecting' }
+        ];
+    } else if (field === 'lockedQty') {
+        tooltipTitle = `${material.name} · 锁定说明`;
+        tooltipRows = [
+            { label: '真实审批锁定：', value: `${material.lockedQty}${unit}`, cls: '' },
+            { label: '演练预占（不占真实）：', value: `${material.drillLockedQty}${unit}`, cls: 'drill' }
+        ];
+    } else if (field === 'drillLockedQty') {
+        tooltipTitle = `${material.name} · 演练预占`;
+        tooltipRows = [
+            { label: '演练预占数量：', value: `${material.drillLockedQty}${unit}`, cls: 'drill' },
+            { label: '说明：', value: '演练专用，不占用真实库存', cls: 'drill' }
+        ];
+    } else if (field === 'inspectingQty') {
+        tooltipTitle = `${material.name} · 待检测说明`;
+        const pendingList = findPendingInspectionsForMaterial(material.id);
+        tooltipRows = [
+            { label: '检测中数量：', value: `${material.inspectingQty}${unit}`, cls: 'inspecting' },
+            { label: '涉及单据：', value: `${pendingList.length} 张`, cls: 'inspecting' }
+        ];
+        if (pendingList.length > 0) {
+            pendingList.slice(0, 3).forEach(p => {
+                tooltipRows.push({
+                    label: `  ・${p.billNo}：`,
+                    value: `${p.qty}${unit}`,
+                    cls: 'inspecting'
+                });
+            });
+        }
+        tooltipRows.push({
+            label: '说明：',
+            value: '已归还，检测合格后可再调拨',
+            cls: 'inspecting'
+        });
+    } else if (field === 'totalQty') {
+        tooltipTitle = `${material.name} · 物理库存`;
+        tooltipRows = [
+            { label: '真实库存总量：', value: `${material.totalQty}${unit}`, cls: '' },
+            { label: '其中：可调拨', value: `${material.availableQty}${unit}`, cls: '' },
+            { label: '其中：已锁定', value: `${material.lockedQty}${unit}`, cls: '' },
+            { label: '其中：演练预占', value: `${material.drillLockedQty}${unit}`, cls: 'drill' },
+            { label: '其中：待检测', value: `${material.inspectingQty}${unit}`, cls: 'inspecting' }
+        ];
+    }
+    
+    return `
+        <span class="qty-with-tooltip">${value}${unit}
+            <span class="qty-tooltip">
+                ${tooltipTitle ? `<div class="tooltip-title">${tooltipTitle}</div>` : ''}
+                ${tooltipRows.map(r => `<div class="tooltip-row"><span>${r.label}</span><span class="value ${r.cls || ''}">${r.value}</span></div>`).join('')}
+            </span>
+        </span>
+    `;
+}
+
+// 查找某物资的检测中记录（辅助 tooltip）
+function findPendingInspectionsForMaterial(materialId) {
+    try {
+        const result = [];
+        if (!dataManager || !dataManager.data) return result;
+        (dataManager.data.allocations || []).forEach(a => {
+            (a.inspections || []).forEach(i => {
+                if (i.materialId === materialId && ['pending', 'inspecting'].includes(i.status)) {
+                    result.push({
+                        billNo: a.billNo,
+                        qty: i.qty,
+                        time: i.time
+                    });
+                }
+            });
+        });
+        return result;
+    } catch (e) {
+        return [];
+    }
 }
 
 // 判断物资库存状态
@@ -238,7 +361,7 @@ function getMaterialStatus(material) {
     return 'normal';
 }
 
-// 获取仓位状态
+// 获取仓位状态（支持演练预占/检测中）
 function getPositionStatus(positionDetail) {
     if (!positionDetail || positionDetail.materials.length === 0) {
         return 'normal';
@@ -247,12 +370,20 @@ function getPositionStatus(positionDetail) {
     const hasExpired = positionDetail.materials.some(m => new Date(m.expireDate) < new Date());
     const hasLowStock = positionDetail.materials.some(m => m.totalQty <= m.warningThreshold);
     const hasLocked = positionDetail.totalLocked > 0;
+    const hasDrill = (positionDetail.totalDrillLocked || 0) > 0;
+    const hasInspecting = (positionDetail.totalInspecting || 0) > 0;
     
     if (hasExpired) {
         return 'danger';
     }
+    if (hasInspecting) {
+        return 'inspecting';
+    }
     if (hasLocked) {
         return 'locked';
+    }
+    if (hasDrill) {
+        return 'drill';
     }
     if (hasLowStock) {
         return 'warning';

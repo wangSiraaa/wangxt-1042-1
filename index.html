@@ -100,7 +100,21 @@
                         <div class="stat-icon cyan">🔒</div>
                         <div class="stat-info">
                             <div class="stat-value" id="lockedCount">0</div>
-                            <div class="stat-label">已锁定库存</div>
+                            <div class="stat-label">真实锁定库存</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon info">🎯</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="drillLockedCount">0</div>
+                            <div class="stat-label">演练预占库存</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon inspecting">🔧</div>
+                        <div class="stat-info">
+                            <div class="stat-value" id="inspectingCount">0</div>
+                            <div class="stat-label">检测中不可调</div>
                         </div>
                     </div>
                 </div>
@@ -137,8 +151,10 @@
                                             <th>仓位</th>
                                             <th>总数量</th>
                                             <th>可调拨</th>
-                                            <th>已锁定</th>
-                                            <th>保养状态</th>
+                                            <th>真实锁定</th>
+                                            <th>演练预占</th>
+                                            <th>检测中</th>
+                                            <th>保养</th>
                                             <th>状态</th>
                                             <th>操作</th>
                                         </tr>
@@ -183,6 +199,8 @@
                                 <span class="legend-item"><span class="legend-color status-warning"></span>预警</span>
                                 <span class="legend-item"><span class="legend-color status-danger"></span>不足/过期</span>
                                 <span class="legend-item"><span class="legend-color status-locked"></span>已锁定</span>
+                                <span class="legend-item"><span class="legend-color status-drill"></span>演练预占</span>
+                                <span class="legend-item"><span class="legend-color status-inspecting"></span>检测中</span>
                             </div>
                         </div>
                         <div class="panel-body">
@@ -216,6 +234,11 @@
                         </div>
                         <div class="panel-body">
                             <div class="filter-bar">
+                                <select class="filter-select" id="allocationBillTypeFilter">
+                                    <option value="">全部类型</option>
+                                    <option value="real">🚨 真实灾情单</option>
+                                    <option value="drill">🎯 演练单</option>
+                                </select>
                                 <select class="filter-select" id="allocationStatusFilter">
                                     <option value="">全部状态</option>
                                     <option value="pending">待审批</option>
@@ -224,6 +247,7 @@
                                     <option value="transporting">转运中</option>
                                     <option value="received">已签收</option>
                                     <option value="returning">归还中</option>
+                                    <option value="inspecting">归还检测中</option>
                                     <option value="completed">已完成</option>
                                     <option value="rejected">已驳回</option>
                                 </select>
@@ -234,6 +258,7 @@
                                     <thead>
                                         <tr>
                                             <th>调拨单号</th>
+                                            <th>单据类型</th>
                                             <th>申请时间</th>
                                             <th>目标社区</th>
                                             <th>物资数量</th>
@@ -281,6 +306,7 @@
                                     <option value="overdue">已逾期</option>
                                     <option value="returned">已归还</option>
                                     <option value="partial">部分归还</option>
+                                    <option value="inspecting">归还检测中</option>
                                 </select>
                                 <button class="btn btn-warning" id="urgeReturnBtn" style="display:none;">📢 批量催还</button>
                             </div>
@@ -291,10 +317,12 @@
                                     <thead>
                                         <tr>
                                             <th>调拨单号</th>
+                                            <th>类型</th>
                                             <th>社区</th>
                                             <th>应还日期</th>
                                             <th>应还数量</th>
                                             <th>已还数量</th>
+                                            <th>检测状态</th>
                                             <th>状态</th>
                                             <th>操作</th>
                                         </tr>

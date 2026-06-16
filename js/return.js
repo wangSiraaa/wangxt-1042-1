@@ -27,9 +27,9 @@ const ReturnPage = {
 
         const statusFilter = document.getElementById('returnStatusFilter')?.value || '';
         
-        // 获取需要显示归还信息的调拨单（已签收、归还中、已完成的）
+        // 获取需要显示归还信息的调拨单（含 inspecting）
         let allocations = dataManager.getAllocations().filter(a => 
-            ['received', 'returning', 'completed'].includes(a.status) ||
+            ['received', 'returning', 'completed', 'inspecting'].includes(a.status) ||
             (!['pending', 'rejected'].includes(a.status) && a.returnDeadline)
         );
 
@@ -37,7 +37,7 @@ const ReturnPage = {
             if (statusFilter === 'overdue') {
                 const today = new Date().toISOString().split('T')[0];
                 allocations = allocations.filter(a => 
-                    a.returnDeadline < today && a.status !== 'completed'
+                    a.returnDeadline < today && a.status !== 'completed' && a.status !== 'inspecting'
                 );
             } else if (statusFilter === 'returned') {
                 allocations = allocations.filter(a => a.status === 'completed');
@@ -48,11 +48,17 @@ const ReturnPage = {
                         (item.returnedQty || 0) < (item.qty || 0)
                     );
                 });
+            } else if (statusFilter === 'inspecting') {
+                allocations = allocations.filter(a => a.status === 'inspecting');
             }
         }
 
-        // 按应还日期排序，逾期的在前
+        // 按应还日期排序，逾期的在前，检测中的排前
         allocations.sort((a, b) => {
+            const aInspecting = a.status === 'inspecting';
+            const bInspecting = b.status === 'inspecting';
+            if (aInspecting && !bInspecting) return -1;
+            if (!aInspecting && bInspecting) return 1;
             const aOverdue = this.isOverdue(a);
             const bOverdue = this.isOverdue(b);
             if (aOverdue && !bOverdue) return -1;
@@ -63,7 +69,7 @@ const ReturnPage = {
         if (allocations.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="7" style="text-align: center; color: #bfbfbf; padding: 40px;">
+                    <td colspan="9" style="text-align: center; color: #bfbfbf; padding: 40px;">
                         暂无归还记录
                     </td>
                 </tr>
@@ -77,6 +83,7 @@ const ReturnPage = {
             const totalQty = a.items.reduce((sum, item) => sum + item.qty, 0);
             const totalReceived = a.items.reduce((sum, item) => sum + (item.receivedQty || item.qty), 0);
             const totalReturned = a.items.reduce((sum, item) => sum + (item.returnedQty || 0), 0);
+            const totalInspecting = (a.inspections || []).filter(i => ['pending', 'inspecting'].includes(i.status)).reduce((s, i) => s + i.qty, 0);
             
             const isOverdue = this.isOverdue(a);
             const isPartial = totalReturned > 0 && totalReturned < totalReceived;
@@ -84,7 +91,10 @@ const ReturnPage = {
             let returnStatus = '';
             let returnClass = '';
             
-            if (a.status === 'completed') {
+            if (a.status === 'inspecting') {
+                returnStatus = '归还检测中';
+                returnClass = 'inspecting';
+            } else if (a.status === 'completed') {
                 returnStatus = '已归还';
                 returnClass = 'normal';
             } else if (a.status === 'returning') {
@@ -105,10 +115,13 @@ const ReturnPage = {
             if (role === 'warehouse' && a.status === 'returning') {
                 actions += `<span class="action-link" onclick="AllocationPage.returnIn('${a.id}')">入库</span>`;
             }
+            if (role === 'warehouse' && a.status === 'inspecting') {
+                actions += `<span class="action-link" style="color:#d48806;font-weight:600;" onclick="AllocationPage.viewDetail('${a.id}')">检测处理</span>`;
+            }
             if (role === 'volunteer' && a.status === 'received' && a.volunteer === dataManager.getCurrentUser()) {
                 actions += `<span class="action-link" onclick="AllocationPage.startReturn('${a.id}')">归还</span>`;
             }
-            if ((role === 'warehouse' || role === 'commander') && isOverdue && a.status !== 'completed') {
+            if ((role === 'warehouse' || role === 'commander') && isOverdue && a.status !== 'completed' && a.status !== 'inspecting') {
                 actions += `<span class="action-link danger" onclick="ReturnPage.urgeReturn('${a.id}')">催还</span>`;
             }
             actions += `<span class="action-link" onclick="AllocationPage.viewDetail('${a.id}')">详情</span>`;
@@ -118,16 +131,19 @@ const ReturnPage = {
             const daysLeft = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
             
             const daysText = a.status === 'completed' 
-                ? '已完成' 
+                ? '已完成'
+                : a.status === 'inspecting'
+                ? `🔧 检测中${totalInspecting > 0 ? ' ' + totalInspecting + '件' : ''}`
                 : (isOverdue ? `逾期${Math.abs(daysLeft)}天` : `还剩${daysLeft}天`);
 
             return `
-                <tr style="${isOverdue && a.status !== 'completed' ? 'background: #fff1f0;' : ''}">
+                <tr style="${isOverdue && a.status !== 'completed' && a.status !== 'inspecting' ? 'background: #fff1f0;' : (a.status === 'inspecting' ? 'background: #fffbe6;' : '')}">
                     <td><strong>${a.billNo}</strong></td>
+                    <td>${getBillTypeTag(a)}</td>
                     <td>${a.community}</td>
                     <td>
                         <div>${a.returnDeadline}</div>
-                        <div style="font-size: 11px; color: ${isOverdue && a.status !== 'completed' ? '#ff4d4f' : '#8c8c8c'};">
+                        <div style="font-size: 11px; color: ${a.status === 'inspecting' ? '#d48806' : (isOverdue && a.status !== 'completed' ? '#ff4d4f' : '#8c8c8c')};">
                             ${daysText}
                         </div>
                     </td>
@@ -136,6 +152,9 @@ const ReturnPage = {
                         <span style="color: ${totalReturned < totalReceived ? '#faad14' : '#52c41a'}">
                             ${totalReturned} 件
                         </span>
+                    </td>
+                    <td>
+                        ${a.inspectionStatus ? getInspectionTag(a.inspectionStatus) : (totalInspecting > 0 ? getInspectionTag('pending') : '-')}
                     </td>
                     <td><span class="status-tag ${returnClass}">${returnStatus}</span></td>
                     <td>${actions}</td>
