@@ -974,7 +974,7 @@ class DataManager {
         return allocation;
     }
 
-    // 锁定库存（双轨：演练单走drillLockedQty，真实单走lockedQty）
+    // 锁定库存（双轨：演练单走drillLockedQty，真实单走lockedQty，两池完全独立）
     _lockInventory(allocationId) {
         const allocation = this.getAllocation(allocationId);
         if (!allocation) return;
@@ -982,12 +982,14 @@ class DataManager {
         
         allocation.items.forEach(item => {
             const material = this.getMaterial(item.materialId);
-            if (material && material.availableQty >= item.qty) {
-                material.availableQty -= item.qty;
-                if (isDrill) {
-                    material.drillLockedQty += item.qty;
-                } else {
-                    material.lockedQty += item.qty;
+            if (!material) return;
+            const lockQty = item.qty;
+            if (isDrill) {
+                material.drillLockedQty += lockQty;
+            } else {
+                if (material.availableQty >= lockQty) {
+                    material.availableQty -= lockQty;
+                    material.lockedQty += lockQty;
                 }
             }
         });
@@ -1001,16 +1003,19 @@ class DataManager {
         
         allocation.items.forEach(item => {
             const material = this.getMaterial(item.materialId);
-            if (material) {
-                const lockedField = isDrill ? 'drillLockedQty' : 'lockedQty';
-                const unlockQty = Math.min(item.qty, material[lockedField]);
-                material.availableQty += unlockQty;
-                material[lockedField] -= unlockQty;
+            if (!material) return;
+            const unlockQty = item.qty;
+            if (isDrill) {
+                material.drillLockedQty = Math.max(0, material.drillLockedQty - unlockQty);
+            } else {
+                const actualUnlock = Math.min(unlockQty, material.lockedQty);
+                material.lockedQty -= actualUnlock;
+                material.availableQty += actualUnlock;
             }
         });
     }
 
-    // 出库扣减库存（演练单只扣演练预占，真实单扣物理库存）
+    // 出库扣减库存（真实单扣物理+释放锁定；演练单仅虚拟出库，drillLockedQty 继续持有到归还）
     _decreaseInventory(allocationId) {
         const allocation = this.getAllocation(allocationId);
         if (!allocation) return;
@@ -1018,14 +1023,15 @@ class DataManager {
         
         allocation.items.forEach(item => {
             const material = this.getMaterial(item.materialId);
-            if (material) {
-                const lockedField = isDrill ? 'drillLockedQty' : 'lockedQty';
-                const pickQty = Math.min(item.qty, material[lockedField]);
-                material[lockedField] -= pickQty;
-                if (!isDrill) {
-                    material.totalQty -= pickQty;
-                }
+            if (!material) return;
+            const pickQty = item.qty;
+            if (isDrill) {
                 item.pickedQty = pickQty;
+            } else {
+                const actualPick = Math.min(pickQty, material.lockedQty);
+                material.lockedQty -= actualPick;
+                material.totalQty -= actualPick;
+                item.pickedQty = actualPick;
             }
         });
     }
